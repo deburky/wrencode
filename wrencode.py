@@ -478,8 +478,8 @@ def parse_tool_calls(text: str) -> list[dict[str, Any]]:
 _TYPE_MAP: dict[str, str] = {
     "string": "string",
     "string?": "string",
-    "number": "integer",
-    "number?": "integer",
+    "number": "number",
+    "number?": "number",
     "boolean": "boolean",
     "boolean?": "boolean",
 }
