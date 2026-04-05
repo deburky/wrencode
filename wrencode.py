@@ -389,6 +389,8 @@ def run_tool(name: str, args: dict[str, Any]) -> str:
 #-----------------------------------------------------------------------------------------------
 def flatten_content(content: Any) -> str:
     """Flatten Anthropic-style content list to plain string."""
+    if content is None:
+        return ""
     if isinstance(content, str):
         return content
     parts: list[str] = []
@@ -478,8 +480,8 @@ def parse_tool_calls(text: str) -> list[dict[str, Any]]:
 _TYPE_MAP: dict[str, str] = {
     "string": "string",
     "string?": "string",
-    "number": "number",
-    "number?": "number",
+    "number": "integer",
+    "number?": "integer",
     "boolean": "boolean",
     "boolean?": "boolean",
 }
@@ -526,6 +528,49 @@ def _parse_anthropic_response(
     return "\n".join(text_parts).strip(), tool_calls
 
 
+def _build_openai_tools() -> list[dict[str, Any]]:
+    """Build OpenAI-native function definitions from the TOOLS registry."""
+    result = []
+    for name, (description, params, _) in TOOLS.items():
+        properties: dict[str, Any] = {}
+        required: list[str] = []
+        for param_name, param_type in params.items():
+            properties[param_name] = {"type": _TYPE_MAP.get(param_type, "string")}
+            if not param_type.endswith("?"):
+                required.append(param_name)
+        result.append({
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": description,
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                },
+            },
+        })
+    return result
+
+
+def _parse_openai_response(
+    data: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Parse OpenAI API response into display text and tool_call blocks."""
+    message = data["choices"][0]["message"]
+    display_text = message.get("content") or ""
+    tool_calls: list[dict[str, Any]] = []
+    for tc in message.get("tool_calls") or []:
+        with contextlib.suppress(Exception):
+            tool_calls.append({
+                "type": "tool_use",
+                "id": tc["id"],
+                "name": tc["function"]["name"],
+                "input": json.loads(tc["function"]["arguments"]),
+            })
+    return display_text.strip(), tool_calls
+
+
 #-----------------------------------------------------------------------------------------------
 # HTTP Helper
 #-----------------------------------------------------------------------------------------------
@@ -552,8 +597,24 @@ def get_response(
         {"role": m["role"], "content": flatten_content(m["content"])} for m in messages
     ]
 
-    # OpenRouter & OpenAI — OpenAI-compatible chat completions
-    if BACKEND in ("openrouter", "openai"):
+    # OpenAI — native function calling
+    if BACKEND == "openai":
+        data = _http_post(
+            API_BASE,
+            {
+                "model": MODEL,
+                "messages": [{"role": "system", "content": system_prompt}] + messages,
+                "max_tokens": MAX_TOKENS,
+                "temperature": 0.3,
+                "tools": _build_openai_tools(),
+                "tool_choice": "auto",
+            },
+            {"Content-Type": "application/json", "Authorization": f"Bearer {API_KEY}"},
+        )
+        return json.dumps(data)  # return raw for agent loop to parse natively
+
+    # OpenRouter — OpenAI-compatible chat completions (no native tools)
+    if BACKEND == "openrouter":
         data = _http_post(
             API_BASE,
             {
@@ -780,13 +841,19 @@ def run_agent_turn(
         response_text = get_response(messages, system_prompt, mlx_state)
         print(" " * 20, end="\r")
 
-        # Anthropic native tool use path
-        if BACKEND == "anthropic":
+        # Anthropic & OpenAI native tool use path
+        if BACKEND in ("anthropic", "openai"):
             data = json.loads(response_text)
-            display_text, tool_calls = _parse_anthropic_response(data)
+            if BACKEND == "anthropic":
+                display_text, tool_calls = _parse_anthropic_response(data)
+            else:
+                display_text, tool_calls = _parse_openai_response(data)
             if display_text:
                 print(f"\n{CYAN}>{RESET} {render_markdown(display_text)}")
-            messages.append({"role": "assistant", "content": data.get("content", [])})
+            if BACKEND == "anthropic":
+                messages.append({"role": "assistant", "content": data.get("content", [])})
+            else:
+                messages.append(data["choices"][0]["message"])  # preserve tool_calls exactly
             if not tool_calls:
                 break
             tool_results: list[dict[str, Any]] = []
@@ -801,13 +868,21 @@ def run_agent_turn(
                     else ("..." if len(lines[0]) > 60 else "")
                 )
                 print(f"{DIM}⎿ {preview}{RESET}")
-                tool_results.append(
-                    {"type": "tool_result", "tool_use_id": tc["id"], "content": result}
-                )
-            messages.append({"role": "user", "content": tool_results})
+                if BACKEND == "anthropic":
+                    tool_results.append(
+                        {"type": "tool_result", "tool_use_id": tc["id"], "content": result}
+                    )
+                else:
+                    tool_results.append(
+                        {"role": "tool", "tool_call_id": tc["id"], "content": result}
+                    )
+            if BACKEND == "anthropic":
+                messages.append({"role": "user", "content": tool_results})
+            else:
+                messages.extend(tool_results)
             continue
 
-        # XML tool call path (mlx, transformers, openrouter, openai, local)
+        # XML tool call path (mlx, transformers, openrouter, local)
         xml_tool_calls = parse_tool_calls(response_text)
         display_text = re.sub(
             r"<tool_call>.*?</tool_call>", "", response_text, flags=re.DOTALL
