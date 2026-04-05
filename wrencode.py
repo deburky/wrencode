@@ -473,6 +473,60 @@ def parse_tool_calls(text: str) -> list[dict[str, Any]]:
     return calls
 
 #-----------------------------------------------------------------------------------------------
+# Anthropic Native Tools
+#-----------------------------------------------------------------------------------------------
+_TYPE_MAP: dict[str, str] = {
+    "string": "string",
+    "string?": "string",
+    "number": "integer",
+    "number?": "integer",
+    "boolean": "boolean",
+    "boolean?": "boolean",
+}
+
+
+def _build_anthropic_tools() -> list[dict[str, Any]]:
+    """Build Anthropic-native tool definitions from the TOOLS registry."""
+    result = []
+    for name, (description, params, _) in TOOLS.items():
+        properties: dict[str, Any] = {}
+        required: list[str] = []
+        for param_name, param_type in params.items():
+            properties[param_name] = {"type": _TYPE_MAP.get(param_type, "string")}
+            if not param_type.endswith("?"):
+                required.append(param_name)
+        result.append({
+            "name": name,
+            "description": description,
+            "input_schema": {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            },
+        })
+    return result
+
+
+def _parse_anthropic_response(
+    data: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Parse Anthropic API response into display text and tool_use blocks."""
+    text_parts: list[str] = []
+    tool_calls: list[dict[str, Any]] = []
+    for block in data.get("content", []):
+        if block.get("type") == "text":
+            text_parts.append(block["text"])
+        elif block.get("type") == "tool_use":
+            tool_calls.append({
+                "type": "tool_use",
+                "id": block["id"],
+                "name": block["name"],
+                "input": block.get("input", {}),
+            })
+    return "\n".join(text_parts).strip(), tool_calls
+
+
+#-----------------------------------------------------------------------------------------------
 # HTTP Helper
 #-----------------------------------------------------------------------------------------------
 def _http_post(url: str, payload: dict[str, Any], headers: dict[str, str]) -> Any:
@@ -512,8 +566,28 @@ def get_response(
         )
         return str(data["choices"][0]["message"]["content"])
 
-    # Anthropic & local proxy — Anthropic messages API
-    if BACKEND in ("anthropic", "local"):
+    # Anthropic — native tool use API
+    if BACKEND == "anthropic":
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": API_KEY,
+            "anthropic-version": "2023-06-01",
+        }
+        data = _http_post(
+            API_BASE,
+            {
+                "model": MODEL,
+                "system": system_prompt,
+                "messages": messages,
+                "max_tokens": MAX_TOKENS,
+                "tools": _build_anthropic_tools(),
+            },
+            headers,
+        )
+        return json.dumps(data)  # return raw for agent loop to parse natively
+
+    # Local proxy — Anthropic messages API (no native tools)
+    if BACKEND == "local":
         headers = {
             "Content-Type": "application/json",
             "x-api-key": API_KEY,
@@ -706,7 +780,35 @@ def run_agent_turn(
         response_text = get_response(messages, system_prompt, mlx_state)
         print(" " * 20, end="\r")
 
-        tool_calls = parse_tool_calls(response_text)
+        # Anthropic native tool use path
+        if BACKEND == "anthropic":
+            data = json.loads(response_text)
+            display_text, tool_calls = _parse_anthropic_response(data)
+            if display_text:
+                print(f"\n{CYAN}>{RESET} {render_markdown(display_text)}")
+            messages.append({"role": "assistant", "content": data.get("content", [])})
+            if not tool_calls:
+                break
+            tool_results: list[dict[str, Any]] = []
+            for tc in tool_calls:
+                arg_preview = str(list(tc["input"].values())[0])[:50] if tc["input"] else ""
+                print(f"\n{GREEN}{tc['name'].capitalize()}{RESET}({DIM}{arg_preview}{RESET})")
+                result = run_tool(tc["name"], tc["input"])
+                lines = result.split("\n")
+                preview = lines[0][:60] + (
+                    f" ... +{len(lines) - 1} lines"
+                    if len(lines) > 1
+                    else ("..." if len(lines[0]) > 60 else "")
+                )
+                print(f"{DIM}⎿ {preview}{RESET}")
+                tool_results.append(
+                    {"type": "tool_result", "tool_use_id": tc["id"], "content": result}
+                )
+            messages.append({"role": "user", "content": tool_results})
+            continue
+
+        # XML tool call path (mlx, transformers, openrouter, openai, local)
+        xml_tool_calls = parse_tool_calls(response_text)
         display_text = re.sub(
             r"<tool_call>.*?</tool_call>", "", response_text, flags=re.DOTALL
         ).strip()
@@ -717,8 +819,8 @@ def run_agent_turn(
         content_blocks: list[dict[str, Any]] = (
             [{"type": "text", "text": display_text}] if display_text else []
         )
-        tool_results: list[dict[str, Any]] = []
-        for tc in tool_calls:
+        xml_tool_results: list[dict[str, Any]] = []
+        for tc in xml_tool_calls:
             arg_preview = str(list(tc["input"].values())[0])[:50] if tc["input"] else ""
             print(f"\n{GREEN}{tc['name'].capitalize()}{RESET}({DIM}{arg_preview}{RESET})")
             result = run_tool(tc["name"], tc["input"])
@@ -729,15 +831,15 @@ def run_agent_turn(
                 else ("..." if len(lines[0]) > 60 else "")
             )
             print(f"{DIM}⎿ {preview}{RESET}")
-            tool_results.append(
+            xml_tool_results.append(
                 {"type": "tool_result", "tool_use_id": tc["id"], "content": result}
             )
             content_blocks.append(tc)
 
         messages.append({"role": "assistant", "content": content_blocks})
-        if not tool_results:
+        if not xml_tool_results:
             break
-        messages.append({"role": "user", "content": tool_results})
+        messages.append({"role": "user", "content": xml_tool_results})
 
 #-----------------------------------------------------------------------------------------------
 # Slash Commands
