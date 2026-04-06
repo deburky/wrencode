@@ -51,9 +51,9 @@ if os.path.exists(_env_path):
                 _k, _v = _line.split("=", 1)
                 os.environ.setdefault(_k.strip(), _v.strip())
 
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 # Backend Configuration
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 BACKEND = os.environ.get("BACKEND", "mlx")
 
 if BACKEND == "openrouter":
@@ -83,9 +83,9 @@ else:  # mlx
     from mlx_lm.generate import stream_generate
     from mlx_lm.sample_utils import make_sampler
 
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 # Constants & Environment Variables
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "4096"))
 MAX_READ_BYTES = int(os.environ.get("MAX_READ_BYTES", str(4 * 1024 * 1024)))
 MAX_READ_LINES = int(os.environ.get("MAX_READ_LINES", "800"))
@@ -101,9 +101,9 @@ _GLOB_SKIP: set[str] = {
     if s
 }
 
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 # Terminal Colors
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 RESET, BOLD, DIM = "\033[0m", "\033[1m", "\033[2m"
 BLUE, CYAN, GREEN, YELLOW, RED = (
     "\033[34m",
@@ -122,9 +122,10 @@ WREN_BANNER = f"""{BRIGHT_CYAN}
  \u2588\u2588\u2588 \u2588\u2588\u2588  \u2588\u2588   \u2588\u2588 \u2588\u2588\u2588\u2588\u2588\u2588\u2588 \u2588\u2588   \u2588\u2588\u2588\u2588  \u2588\u2588\u2588\u2588\u2588\u2588  \u2588\u2588\u2588\u2588\u2588\u2588  \u2588\u2588\u2588\u2588\u2588\u2588  \u2588\u2588\u2588\u2588\u2588\u2588\u2588
 {RESET}"""
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Path Helpers
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def workspace_root() -> pathlib.Path:
     """Return the resolved workspace root path from env or cwd."""
     if w := os.environ.get("WRENCODE_WORKSPACE"):
@@ -158,9 +159,10 @@ def resolve_tool_path(raw: Any) -> pathlib.Path:
             ) from None
     return p
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Input Validation
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def _require_str(args: dict[str, Any], key: str) -> str:
     """Require a non-empty string value from args dict by key."""
     val = args.get(key)
@@ -178,12 +180,13 @@ def _optional_int(
         return default
     try:
         return int(val)
-    except (TypeError, ValueError):
-        raise ValueError(f"'{key}' must be an integer, got {val!r}")
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"'{key}' must be an integer, got {val!r}") from e
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Tools
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def read(args: dict[str, Any]) -> str:
     """Read a file with line numbers or list a directory."""
     path = resolve_tool_path(_require_str(args, "path"))
@@ -204,11 +207,14 @@ def read(args: dict[str, Any]) -> str:
         return f"error: offset {offset} out of range (file has {len(lines)} lines)"
     limit_val = _optional_int(args, "limit")
     cap = min(
-        limit_val if (args.get("limit") and limit_val is not None) else len(lines) - offset,
+        limit_val
+        if (args.get("limit") and limit_val is not None)
+        else len(lines) - offset,
         MAX_READ_LINES,
     )
     out = "".join(
-        f"{offset + i + 1:4}| {l}" for i, l in enumerate(lines[offset : offset + cap])
+        f"{offset + i + 1:4}| {line}"
+        for i, line in enumerate(lines[offset : offset + cap])
     )
     if offset + cap < len(lines):
         out += f"\n... ({len(lines) - offset - cap} more lines; use offset/limit or raise MAX_READ_LINES)"
@@ -244,7 +250,9 @@ def edit(args: dict[str, Any]) -> str:
     if not confirm(f"Edit {path!r}"):
         return "cancelled"
     path.write_text(
-        text.replace(old, str(new)) if args.get("all") else text.replace(old, str(new), 1),
+        text.replace(old, str(new))
+        if args.get("all")
+        else text.replace(old, str(new), 1),
         encoding="utf-8",
     )
     return "ok"
@@ -261,8 +269,7 @@ def glob(args: dict[str, Any]) -> str:
     files = [
         f
         for f in globlib.glob(str(base / pat), recursive=True)
-        if os.path.isfile(f)
-        and all(p not in _GLOB_SKIP for p in pathlib.Path(f).parts)
+        if os.path.isfile(f) and all(p not in _GLOB_SKIP for p in pathlib.Path(f).parts)
     ]
     return "\n".join(sorted(files, key=os.path.getmtime, reverse=True)) or "none"
 
@@ -288,7 +295,9 @@ def grep(args: dict[str, Any]) -> str:
     except subprocess.TimeoutExpired:
         return "error: ripgrep timed out (90s)"
     if proc.returncode not in (0, 1):
-        return f"error: ripgrep failed ({proc.returncode}): {(proc.stderr or '').strip()}"
+        return (
+            f"error: ripgrep failed ({proc.returncode}): {(proc.stderr or '').strip()}"
+        )
     raw = proc.stdout.splitlines()
     body = "\n".join(raw[:GREP_MAX]) or "none"
     if len(raw) > GREP_MAX:
@@ -384,9 +393,10 @@ def run_tool(name: str, args: dict[str, Any]) -> str:
     except Exception as e:
         return f"error: {e}"
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Message Formatting
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def flatten_content(content: Any) -> str:
     """Flatten Anthropic-style content list to plain string."""
     if content is None:
@@ -412,9 +422,10 @@ def render_markdown(text: str) -> str:
     """Render basic markdown bold syntax to terminal bold escape codes."""
     return re.sub(r"\*\*(.+?)\*\*", f"{BOLD}\\1{RESET}", text)
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Token & Output Cleaning
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def strip_gptoss_tokens(text: str) -> str:
     """Strip GPT-OSS special tokens and channel markers from model output."""
     if "<|channel|>final<|message|>" in text:
@@ -474,9 +485,10 @@ def parse_tool_calls(text: str) -> list[dict[str, Any]]:
                 )
     return calls
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Anthropic Native Tools
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 _TYPE_MAP: dict[str, str] = {
     "string": "string",
     "string?": "string",
@@ -497,15 +509,17 @@ def _build_anthropic_tools() -> list[dict[str, Any]]:
             properties[param_name] = {"type": _TYPE_MAP.get(param_type, "string")}
             if not param_type.endswith("?"):
                 required.append(param_name)
-        result.append({
-            "name": name,
-            "description": description,
-            "input_schema": {
-                "type": "object",
-                "properties": properties,
-                "required": required,
-            },
-        })
+        result.append(
+            {
+                "name": name,
+                "description": description,
+                "input_schema": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                },
+            }
+        )
     return result
 
 
@@ -519,12 +533,14 @@ def _parse_anthropic_response(
         if block.get("type") == "text":
             text_parts.append(block["text"])
         elif block.get("type") == "tool_use":
-            tool_calls.append({
-                "type": "tool_use",
-                "id": block["id"],
-                "name": block["name"],
-                "input": block.get("input", {}),
-            })
+            tool_calls.append(
+                {
+                    "type": "tool_use",
+                    "id": block["id"],
+                    "name": block["name"],
+                    "input": block.get("input", {}),
+                }
+            )
     return "\n".join(text_parts).strip(), tool_calls
 
 
@@ -538,18 +554,20 @@ def _build_openai_tools() -> list[dict[str, Any]]:
             properties[param_name] = {"type": _TYPE_MAP.get(param_type, "string")}
             if not param_type.endswith("?"):
                 required.append(param_name)
-        result.append({
-            "type": "function",
-            "function": {
-                "name": name,
-                "description": description,
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required,
+        result.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required,
+                    },
                 },
-            },
-        })
+            }
+        )
     return result
 
 
@@ -562,18 +580,20 @@ def _parse_openai_response(
     tool_calls: list[dict[str, Any]] = []
     for tc in message.get("tool_calls") or []:
         with contextlib.suppress(Exception):
-            tool_calls.append({
-                "type": "tool_use",
-                "id": tc["id"],
-                "name": tc["function"]["name"],
-                "input": json.loads(tc["function"]["arguments"]),
-            })
+            tool_calls.append(
+                {
+                    "type": "tool_use",
+                    "id": tc["id"],
+                    "name": tc["function"]["name"],
+                    "input": json.loads(tc["function"]["arguments"]),
+                }
+            )
     return display_text.strip(), tool_calls
 
 
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 # HTTP Helper
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def _http_post(url: str, payload: dict[str, Any], headers: dict[str, str]) -> Any:
     """POST a JSON payload to a URL and return the parsed response."""
     data = json.dumps(payload).encode()
@@ -584,9 +604,10 @@ def _http_post(url: str, payload: dict[str, Any], headers: dict[str, str]) -> An
     except urllib.error.HTTPError as e:
         raise Exception(f"HTTP {e.code}: {e.read().decode()}") from e
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Inference
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def get_response(
     messages: list[dict[str, Any]],
     system_prompt: str,
@@ -647,7 +668,7 @@ def get_response(
         )
         return json.dumps(data)  # return raw for agent loop to parse natively
 
-    # Local proxy — Anthropic messages API (no native tools)
+    # Local proxy — Anthropic messages API; tool calls returned as XML <tool_call> tags in text
     if BACKEND == "local":
         headers = {
             "Content-Type": "application/json",
@@ -713,9 +734,10 @@ def get_response(
         out = out[len(prompt) :].strip()
     return truncate_at_turn_leak(strip_gptoss_tokens(out))
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # History Management
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 HISTORY_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), ".wrencode_history.json"
 )
@@ -737,38 +759,86 @@ def save_history(messages: list[dict[str, Any]]) -> None:
             json.dump(messages, f)
 
 
+def _compact_via_api(history_text: str) -> str:
+    """Call the active API backend to summarise history_text and return the summary."""
+    summarise_prompt = (
+        "Summarize this conversation in 3-5 concise bullet points, "
+        "preserving any file paths, code decisions, or unresolved tasks:\n\n"
+        + history_text
+    )
+    if BACKEND == "anthropic":
+        data = _http_post(
+            API_BASE,
+            {
+                "model": MODEL,
+                "system": "You are a helpful assistant.",
+                "messages": [{"role": "user", "content": summarise_prompt}],
+                "max_tokens": 512,
+            },
+            {
+                "Content-Type": "application/json",
+                "x-api-key": API_KEY,
+                "anthropic-version": "2023-06-01",
+            },
+        )
+        return "\n".join(
+            b["text"] for b in data.get("content", []) if b.get("type") == "text"
+        ).strip()
+    if BACKEND in ("openai", "openrouter"):
+        data = _http_post(
+            API_BASE,
+            {
+                "model": MODEL,
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": summarise_prompt},
+                ],
+                "max_tokens": 512,
+                "temperature": 0.3,
+            },
+            {"Content-Type": "application/json", "Authorization": f"Bearer {API_KEY}"},
+        )
+        return (data["choices"][0]["message"].get("content") or "").strip()
+    return ""
+
+
 def compact_messages(
     messages: list[dict[str, Any]],
     model: Any,
     tokenizer: Any,
-    system_prompt: str,
 ) -> list[dict[str, Any]]:
-    """Summarize conversation history to reduce context length (mlx only)."""
+    """Summarize conversation history to reduce context length."""
     if not messages:
         return messages
     history_text = "".join(
         f"{m['role']}: {flatten_content(m['content'])}\n" for m in messages
     )
-    prompt = tokenizer.apply_chat_template(
-        [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {
-                "role": "user",
-                "content": f"Summarize this conversation in 3-5 bullet points:\n\n{history_text}",
-            },
-        ],
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-    sampler = make_sampler(temp=0.3, top_p=0.95, min_p=0.0, min_tokens_to_keep=1)
-    summary = "".join(
-        c.text
-        for c in stream_generate(
-            model, tokenizer, prompt=prompt, max_tokens=512, sampler=sampler
+
+    if BACKEND in ("anthropic", "openai", "openrouter"):
+        summary = _compact_via_api(history_text)
+    else:
+        # MLX / Transformers path
+        prompt = tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {
+                    "role": "user",
+                    "content": f"Summarize this conversation in 3-5 bullet points:\n\n{history_text}",
+                },
+            ],
+            tokenize=False,
+            add_generation_prompt=True,
         )
-    )
-    if summary.startswith(prompt):
-        summary = summary[len(prompt) :].strip()
+        sampler = make_sampler(temp=0.3, top_p=0.95, min_p=0.0, min_tokens_to_keep=1)
+        summary = "".join(
+            c.text
+            for c in stream_generate(
+                model, tokenizer, prompt=prompt, max_tokens=512, sampler=sampler
+            )
+        )
+        if summary.startswith(prompt):
+            summary = summary[len(prompt) :].strip()
+
     return [
         {"role": "user", "content": f"[Conversation summary]\n{summary}"},
         {
@@ -777,9 +847,10 @@ def compact_messages(
         },
     ]
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Workspace & System Prompt
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def git_context() -> str:
     """Return a formatted git status string if inside a git repository."""
     with contextlib.suppress(Exception):
@@ -827,9 +898,10 @@ Examples:
 When reading a file, always pass offset and limit. When you finish a task, summarize what you changed.
 CRITICAL: You MUST use tools for file operations. Never say you can't access files!"""
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Agent Loop
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def run_agent_turn(
     messages: list[dict[str, Any]],
     system_prompt: str,
@@ -851,15 +923,23 @@ def run_agent_turn(
             if display_text:
                 print(f"\n{CYAN}>{RESET} {render_markdown(display_text)}")
             if BACKEND == "anthropic":
-                messages.append({"role": "assistant", "content": data.get("content", [])})
+                messages.append(
+                    {"role": "assistant", "content": data.get("content", [])}
+                )
             else:
-                messages.append(data["choices"][0]["message"])  # preserve tool_calls exactly
+                messages.append(
+                    data["choices"][0]["message"]
+                )  # preserve tool_calls exactly
             if not tool_calls:
                 break
             tool_results: list[dict[str, Any]] = []
             for tc in tool_calls:
-                arg_preview = str(list(tc["input"].values())[0])[:50] if tc["input"] else ""
-                print(f"\n{GREEN}{tc['name'].capitalize()}{RESET}({DIM}{arg_preview}{RESET})")
+                arg_preview = (
+                    str(list(tc["input"].values())[0])[:50] if tc["input"] else ""
+                )
+                print(
+                    f"\n{GREEN}{tc['name'].capitalize()}{RESET}({DIM}{arg_preview}{RESET})"
+                )
                 result = run_tool(tc["name"], tc["input"])
                 lines = result.split("\n")
                 preview = lines[0][:60] + (
@@ -870,7 +950,11 @@ def run_agent_turn(
                 print(f"{DIM}⎿ {preview}{RESET}")
                 if BACKEND == "anthropic":
                     tool_results.append(
-                        {"type": "tool_result", "tool_use_id": tc["id"], "content": result}
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tc["id"],
+                            "content": result,
+                        }
                     )
                 else:
                     tool_results.append(
@@ -897,7 +981,9 @@ def run_agent_turn(
         xml_tool_results: list[dict[str, Any]] = []
         for tc in xml_tool_calls:
             arg_preview = str(list(tc["input"].values())[0])[:50] if tc["input"] else ""
-            print(f"\n{GREEN}{tc['name'].capitalize()}{RESET}({DIM}{arg_preview}{RESET})")
+            print(
+                f"\n{GREEN}{tc['name'].capitalize()}{RESET}({DIM}{arg_preview}{RESET})"
+            )
             result = run_tool(tc["name"], tc["input"])
             lines = result.split("\n")
             preview = lines[0][:60] + (
@@ -916,17 +1002,17 @@ def run_agent_turn(
             break
         messages.append({"role": "user", "content": xml_tool_results})
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Slash Commands
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def handle_slash_command(
     cmd: str,
     messages: list[dict[str, Any]],
     mlx_state: Optional[tuple[Any, Any]],
-    system_prompt: str,
 ) -> Optional[str]:
     """Handle a slash command. Returns 'quit', 'handled', or None if not a command."""
-    if cmd in ("/q", "exit"):
+    if cmd in {"/q", "exit"}:
         save_history(messages)
         return "quit"
     if cmd == "/c":
@@ -935,26 +1021,30 @@ def handle_slash_command(
         print(f"{GREEN}Cleared{RESET}")
         return "handled"
     if cmd == "/compact":
-        if BACKEND == "mlx" and mlx_state:
+        if BACKEND in {"anthropic", "openai", "openrouter"} or (
+            BACKEND in {"mlx", "transformers"} and mlx_state
+        ):
             print(f"{DIM}Compacting history...{RESET}")
-            model, tokenizer = mlx_state
-            messages[:] = compact_messages(messages, model, tokenizer, system_prompt)
+            model, tokenizer = mlx_state or (None, None)
+            before = len(messages)
+            messages[:] = compact_messages(messages, model, tokenizer)
             save_history(messages)
-            print(f"{GREEN}Compacted to {len(messages)} messages{RESET}")
+            print(f"{GREEN}Compacted {before} → {len(messages)} messages{RESET}")
         else:
-            print(f"{YELLOW}/compact only available in mlx backend{RESET}")
+            print(f"{YELLOW}/compact not available for backend '{BACKEND}'{RESET}")
         return "handled"
     if cmd == "/help":
         print(
-            f"{DIM}/c — clear  /compact — summarize history (mlx)  /q — quit{RESET}\n"
+            f"{DIM}/c — clear  /compact — summarize history  /q — quit{RESET}\n"
             f"{DIM}Backends: mlx | transformers | openrouter | openai | anthropic | local{RESET}"
         )
         return "handled"
     return None
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Model Loading
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def load_model() -> Optional[tuple[Any, Any]]:
     """Load model for the current backend and return mlx_state (or None for API backends)."""
     if BACKEND == "mlx":
@@ -990,9 +1080,10 @@ def load_model() -> Optional[tuple[Any, Any]]:
         print(f"{DIM}OpenRouter ({MODEL}){RESET}\n")
     return None
 
-#-----------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------
 # Entry Point
-#-----------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------
 def main() -> None:
     """Entry point — initialize the agent and run the interactive loop."""
     os.environ.setdefault("WRENCODE_WORKSPACE", str(pathlib.Path.cwd().resolve()))
@@ -1009,7 +1100,7 @@ def main() -> None:
             user_input = input(f"{BOLD}{BLUE}❯{RESET} ").strip()
             if not user_input:
                 continue
-            action = handle_slash_command(user_input, messages, mlx_state, system_prompt)
+            action = handle_slash_command(user_input, messages, mlx_state)
             if action == "quit":
                 break
             if action == "handled":
