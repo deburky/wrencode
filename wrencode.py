@@ -738,16 +738,19 @@ def get_response(
 # -----------------------------------------------------------------------------------------------
 # History Management
 # -----------------------------------------------------------------------------------------------
-HISTORY_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), ".wrencode_history.json"
-)
+def history_file_path() -> str:
+    """Return the history file path from env override or user-level default."""
+    if p := os.environ.get("WRENCODE_HISTORY_FILE"):
+        return str(pathlib.Path(p).expanduser())
+    return str(pathlib.Path.home() / ".wrencode" / "history.json")
 
 
 def load_history() -> list[dict[str, Any]]:
     """Load conversation history from the JSON history file."""
-    if os.path.exists(HISTORY_FILE):
+    history_file = history_file_path()
+    if os.path.exists(history_file):
         with contextlib.suppress(Exception):
-            with open(HISTORY_FILE) as f:
+            with open(history_file) as f:
                 return list(json.load(f))
     return []
 
@@ -755,7 +758,9 @@ def load_history() -> list[dict[str, Any]]:
 def save_history(messages: list[dict[str, Any]]) -> None:
     """Persist conversation history to the JSON history file."""
     with contextlib.suppress(Exception):
-        with open(HISTORY_FILE, "w") as f:
+        history_file = pathlib.Path(history_file_path())
+        history_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(history_file, "w") as f:
             json.dump(messages, f)
 
 

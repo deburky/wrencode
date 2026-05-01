@@ -38,7 +38,21 @@ All file operations are sandboxed to the workspace root by default.
 
 ### Option 1: Standalone binary (recommended)
 
-Download the right binary from GitHub Releases, make it executable, and move it into your `PATH`.
+Run the guided installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/deburky/wrencode/main/install.sh | bash
+```
+
+Or download and run it locally:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/deburky/wrencode/main/install.sh -o install.sh
+chmod +x install.sh
+./install.sh
+```
+
+Manual install (fallback): download the right binary from GitHub Releases, make it executable, and move it into your `PATH`.
 
 macOS Apple Silicon:
 
@@ -159,6 +173,7 @@ This publishes release assets:
 |`BACKEND`                    |`mlx`                  |Inference backend                 |
 |`MODEL`                      |backend-dependent      |Model path or ID                  |
 |`WRENCODE_WORKSPACE`         |cwd                    |Root directory for file operations|
+|`WRENCODE_HISTORY_FILE`      |`~/.wrencode/history.json`|Conversation history file path |
 |`WRENCODE_UNRESTRICTED_PATHS`|`0`                    |Allow paths outside workspace     |
 |`MAX_TOKENS`                 |`4096`                 |Max tokens per response           |
 |`MAX_READ_BYTES`             |`4MB`                  |Max file size to read             |
@@ -175,9 +190,11 @@ This publishes release assets:
 
 ## History
 
-Conversation history is persisted to `.wrencode_history.json` in the same directory as the script. It is restored automatically on next launch.
+Conversation history is persisted to `~/.wrencode/history.json` by default. It is restored automatically on next launch.
 
-To clear history: use `/c` in the session, or delete the file.
+To override the history file location, set `WRENCODE_HISTORY_FILE` to a custom path.
+
+To clear history: use `/c` in the session, or delete `~/.wrencode/history.json` (or your override path).
 
 ## License
 
