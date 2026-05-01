@@ -36,7 +36,37 @@ All file operations are sandboxed to the workspace root by default.
 
 ## Installation
 
-No installation required. Single file, standard library only (except the backend you choose).
+### Option 1: Standalone binary (recommended)
+
+Download the right binary from GitHub Releases, make it executable, and move it into your `PATH`.
+
+macOS Apple Silicon:
+
+```bash
+curl -L https://github.com/deburky/wrencode/releases/latest/download/wrencode-macos-arm64 -o wrencode
+chmod +x wrencode
+sudo mv wrencode /usr/local/bin/wrencode
+```
+
+macOS Intel:
+
+```bash
+curl -L https://github.com/deburky/wrencode/releases/latest/download/wrencode-macos-x64 -o wrencode
+chmod +x wrencode
+sudo mv wrencode /usr/local/bin/wrencode
+```
+
+Linux x64:
+
+```bash
+curl -L https://github.com/deburky/wrencode/releases/latest/download/wrencode-linux-x64 -o wrencode
+chmod +x wrencode
+sudo mv wrencode /usr/local/bin/wrencode
+```
+
+### Option 2: Run from source
+
+Single file, standard library only (except the backend you choose).
 
 ```bash
 git clone https://github.com/deburky/wrencode
@@ -77,7 +107,10 @@ pip install transformers torch
 ## Usage
 
 ```bash
-# Default: MLX backend
+# Standalone binary
+wrencode
+
+# Or from source: default MLX backend
 python3 wrencode.py
 
 # Anthropic Claude
@@ -95,6 +128,20 @@ BACKEND=transformers MODEL=deburky/gpt-oss-claude-code python3 wrencode.py
 # Local proxy
 BACKEND=local LOCAL_PORT=8082 python3 wrencode.py
 ```
+
+## Releasing binaries
+
+Binaries are built automatically by GitHub Actions when you push a version tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+This publishes release assets:
+- `wrencode-linux-x64`
+- `wrencode-macos-x64`
+- `wrencode-macos-arm64`
 
 ## Slash Commands
 
