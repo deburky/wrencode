@@ -15,12 +15,13 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: wrencode-linux-x64
+            build_prefix: ""
           - os: macos-14
             artifact_name: wrencode-macos-x64
-            arch: x86_64
+            build_prefix: "arch -x86_64"
           - os: macos-14
             artifact_name: wrencode-macos-arm64
-            arch: arm64
+            build_prefix: ""
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -33,10 +34,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install build dependencies
-        run: arch -${{ matrix.arch }} python -m pip install --upgrade pip pyinstaller
+        run: ${{ matrix.build_prefix }} python -m pip install --upgrade pip pyinstaller
 
       - name: Build single-file binary
-        run: arch -${{ matrix.arch }} pyinstaller --onefile --name wrencode wrencode.py
+        run: ${{ matrix.build_prefix }} pyinstaller --onefile --name wrencode wrencode.py
 
       - name: Rename artifact for platform
         run: mv dist/wrencode dist/${{ matrix.artifact_name }}
