@@ -281,11 +281,17 @@ def grep(args: dict[str, Any]) -> str:
     if not root.is_dir():
         return f"error: grep path must be a directory: {root}"
     rg = shutil.which("rg")
-    if not rg:
-        return "error: ripgrep (rg) not installed — brew install ripgrep"
+    grep_bin = shutil.which("grep")
+    if not rg and not grep_bin:
+        return "error: neither ripgrep (rg) nor grep is installed"
+    cmd = (
+        [rg, "-n", "--color", "never", "--no-heading", "-e", pat, "."]
+        if rg
+        else [grep_bin, "-R", "-n", "-I", "--", pat, "."]
+    )
     try:
         proc = subprocess.run(
-            [rg, "-n", "--color", "never", "--no-heading", "-e", pat, "."],
+            cmd,
             cwd=str(root),
             capture_output=True,
             text=True,
@@ -293,11 +299,9 @@ def grep(args: dict[str, Any]) -> str:
             check=False,
         )
     except subprocess.TimeoutExpired:
-        return "error: ripgrep timed out (90s)"
+        return "error: grep timed out (90s)"
     if proc.returncode not in (0, 1):
-        return (
-            f"error: ripgrep failed ({proc.returncode}): {(proc.stderr or '').strip()}"
-        )
+        return f"error: grep failed ({proc.returncode}): {(proc.stderr or '').strip()}"
     raw = proc.stdout.splitlines()
     body = "\n".join(raw[:GREP_MAX]) or "none"
     if len(raw) > GREP_MAX:
@@ -372,7 +376,7 @@ TOOLS: dict[str, ToolEntry] = {
         glob,
     ),
     "grep": (
-        "Search files for regex (requires rg)",
+        "Search files for regex",
         {"pat": "string", "path": "string?"},
         grep,
     ),

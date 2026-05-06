@@ -29,7 +29,7 @@ The agent has access to six tools:
 - **write** - write content to a file
 - **edit** - replace a unique string in a file
 - **glob** - find files by pattern, sorted by modification time
-- **grep** - search files for a regex pattern (requires `rg`)
+- **grep** - search files for a regex pattern using `rg` when available, falling back to `grep`
 - **bash** - run a shell command with timeout and streaming output
 
 All file operations are sandboxed to the workspace root by default.
